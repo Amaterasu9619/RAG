@@ -1,0 +1,10 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+langchain==0.1.0
+langchain-openai==0.0.2
+langchain-community==0.0.10
+langgraph==0.0.18
+faiss-cpu==1.7.4
+azure-storage-blob==12.19.1
+azure-cosmos==4.5.1
+pydantic==2.5.0

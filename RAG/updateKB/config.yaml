@@ -1,0 +1,21 @@
+sources:
+  sharepoint:
+    site_url: "https://yourtenant.sharepoint.com/sites/yoursite"
+    client_id: "${SHAREPOINT_CLIENT_ID}"
+    client_secret: "${SHAREPOINT_CLIENT_SECRET}"
+    poll_interval_min: 5
+  confluence:
+    base_url: "https://yourcompany.atlassian.net"
+    username: "${CONFLUENCE_USER}"
+    api_token: "${CONFLUENCE_TOKEN}"
+    space_key: "YOURSPACE"
+    poll_interval_min: 5
+azure:
+  openai:
+    api_key: "${AZURE_OPENAI_KEY}"
+    endpoint: "https://your-openai.openai.azure.com/"
+    model: "text-embedding-ada-002"
+  blob:
+    connection_string: "${AZURE_STORAGE_CONNECTION}"
+    container: "vector-indices"
+    index_path: "faiss_index"

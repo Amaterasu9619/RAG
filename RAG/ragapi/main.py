@@ -1,6 +1,5 @@
-# main.py (Updated to support sub-sessions / multiple conversation threads)
 import os
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -15,6 +14,11 @@ class QueryRequest(BaseModel):
     session_id: str = "default"          
     conversation_id: Optional[str] = None  
 
+class ConversationInfo(BaseModel):
+    conversation_id: Optional[str]  
+    title: str
+    last_updated: int  
+
 memory_handler = MemoryHandler(
     cosmos_endpoint=os.getenv("COSMOS_ENDPOINT"),
     cosmos_key=os.getenv("COSMOS_KEY"),
@@ -27,7 +31,7 @@ async def query_endpoint(req: QueryRequest):
         effective_session_id = f"{req.session_id}:{req.conversation_id}"
 
     memory = memory_handler.get_memory(effective_session_id)
-    chat_history = memory.chat_memory.messages 
+    chat_history = memory.chat_memory.messages
 
     initial_state = {
         "query": req.query,
@@ -51,6 +55,10 @@ async def query_endpoint(req: QueryRequest):
         "answer": response,
         "sources": sources
     }
+
+@app.get("/conversations/{session_id}", response_model=List[ConversationInfo])
+def list_conversations(session_id: str):
+    return memory_handler.list_conversations(session_id)
 
 @app.get("/health")
 def health():

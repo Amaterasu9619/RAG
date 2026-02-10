@@ -1,9 +1,33 @@
+# AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+# AZURE_OPENAI_KEY = os.getenv("AZURE_OPENAI_KEY")
+# EMBEDDING_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-ada-002")
+# CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-35-turbo")
+# STORAGE_CONN = os.getenv("AZURE_STORAGE_CONNECTION")
+# VECTOR_CONTAINER = os.getenv("VECTOR_CONTAINER", "vector-indices")
+# VECTOR_INDEX_PATH = os.getenv("VECTOR_INDEX_PATH", "faiss_index")
+
+# embeddings = AzureOpenAIEmbeddings(
+#     azure_endpoint=AZURE_OPENAI_ENDPOINT,
+#     api_key=AZURE_OPENAI_KEY,
+#     azure_deployment=EMBEDDING_DEPLOYMENT,
+# )
+
+# llm = AzureChatOpenAI(
+#     azure_endpoint=AZURE_OPENAI_ENDPOINT,
+#     api_key=AZURE_OPENAI_KEY,
+#     azure_deployment=CHAT_DEPLOYMENT,
+#     temperature=0.3,
+#     max_tokens=800,
+# )
+
 import os
 import pickle
 from typing import List
 
 from azure.storage.blob import BlobServiceClient
-from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
+# from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI  # COMMENTED: Azure parts
+from langchain_huggingface import HuggingFaceEmbeddings  # Local free embeddings
+from langchain_groq import ChatGroq 
 from langchain_community.vectorstores import FAISS
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain_core.messages import BaseMessage
@@ -11,45 +35,47 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.graph import StateGraph, END
 from typing import TypedDict
 
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_KEY = os.getenv("AZURE_OPENAI_KEY")
-EMBEDDING_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-ada-002")
-CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-35-turbo")
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")  
 STORAGE_CONN = os.getenv("AZURE_STORAGE_CONNECTION")
 VECTOR_CONTAINER = os.getenv("VECTOR_CONTAINER", "vector-indices")
 VECTOR_INDEX_PATH = os.getenv("VECTOR_INDEX_PATH", "faiss_index")
 
-embeddings = AzureOpenAIEmbeddings(
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    api_key=AZURE_OPENAI_KEY,
-    azure_deployment=EMBEDDING_DEPLOYMENT,
-)
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")  # Free local model
 
-llm = AzureChatOpenAI(
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    api_key=AZURE_OPENAI_KEY,
-    azure_deployment=CHAT_DEPLOYMENT,
+llm = ChatGroq(
+    groq_api_key=GROQ_API_KEY,
+    model_name="llama3-70b-8192", 
     temperature=0.3,
     max_tokens=800,
 )
 
 def load_vectorstore():
-    blob_client = BlobServiceClient.from_connection_string(STORAGE_CONN)
-    cont_client = blob_client.get_container_client(VECTOR_CONTAINER)
-    index_blob = cont_client.download_blob(f"{VECTOR_INDEX_PATH}.faiss")
-    docstore_blob = cont_client.download_blob(f"{VECTOR_INDEX_PATH}.pkl")
+    if not STORAGE_CONN:
+        print("No Azure storage connection - using empty in-memory vectorstore for testing")
+        return FAISS.from_texts([], embeddings)
+    
+    try:
+        blob_client = BlobServiceClient.from_connection_string(STORAGE_CONN)
+        cont_client = blob_client.get_container_client(VECTOR_CONTAINER)
+        index_blob = cont_client.download_blob(f"{VECTOR_INDEX_PATH}.faiss")
+        docstore_blob = cont_client.download_blob(f"{VECTOR_INDEX_PATH}.pkl")
 
-    index_data = index_blob.readall()
-    docstore_data = docstore_blob.readall()
+        index_data = index_blob.readall()
+        docstore_data = docstore_blob.readall()
 
-    docstore = InMemoryDocstore(pickle.loads(docstore_data))
+        docstore = InMemoryDocstore(pickle.loads(docstore_data))
 
-    return FAISS(
-        embedding_function=embeddings.embed_query,
-        index=index_data,
-        docstore=docstore,
-        index_to_docstore_id={},
-    )
+        return FAISS(
+            embedding_function=embeddings.embed_query,
+            index=index_data,
+            docstore=docstore,
+            index_to_docstore_id={},
+        )
+    except Exception as e:
+        print(f"Failed to load FAISS index (normal for first test): {e}")
+        print("Creating empty in-memory vectorstore")
+        return FAISS.from_texts([], embeddings)
 
 class GraphState(TypedDict):
     query: str
@@ -87,6 +113,7 @@ def llm_node(state: GraphState):
     })
 
     return {"response": response_msg.content}
+
 
 workflow = StateGraph(GraphState)
 workflow.add_node("retrieve", retrieval_node)

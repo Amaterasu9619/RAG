@@ -11,13 +11,13 @@ app = FastAPI(title="RAG Chatbot API")
 
 class QueryRequest(BaseModel):
     query: str
-    session_id: str = "default"          
-    conversation_id: Optional[str] = None  
+    session_id: str = "default"
+    conversation_id: Optional[str] = None
 
 class ConversationInfo(BaseModel):
-    conversation_id: Optional[str]  
+    conversation_id: Optional[str]
     title: str
-    last_updated: int  
+    last_updated: int
 
 memory_handler = MemoryHandler(
     cosmos_endpoint=os.getenv("COSMOS_ENDPOINT"),

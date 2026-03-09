@@ -1,10 +1,27 @@
-langchain==0.1.0
-langchain-openai==0.0.2
-langchain-community==0.0.10
-faiss-cpu==1.7.4
 azure-storage-blob==12.19.1
 azure-identity==1.15.0
-office365-rest-client==2.5.0
-atlassian-python-api==3.44.0
+#Office365-REST-Python-Client==2.5.0
+#atlassian-python-api
 pyyaml==6.0.1
 schedule==1.2.1
+unstructured[docx]==0.15.0
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.8.2
+pydantic-core==2.20.1  # Older, more compatible
+tiktoken==0.7.0
+langchain==0.2.16  # Newer LangChain works better with pydantic v2
+langchain-community==0.2.16
+#langchain==0.1.0
+langchain-openai==0.1.25
+#langchain-community==0.0.10
+langgraph==0.2.14
+langchain_huggingface
+faiss-cpu
+azure-storage-blob==12.19.1
+azure-cosmos==4.5.1
+langchain_groq
+pdfminer.six==20221105
+matplotlib
+pdf2image
+pypdf

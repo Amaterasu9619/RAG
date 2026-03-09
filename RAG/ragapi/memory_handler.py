@@ -1,28 +1,39 @@
 import json
 from typing import Dict, List, Optional
+import time
 
 from langchain.memory import ConversationBufferWindowMemory
 from azure.cosmos import CosmosClient
 
 class MemoryHandler:
     def __init__(self, cosmos_endpoint: str, cosmos_key: str, db_name: str = "chatbot", container_name: str = "sessions"):
-        self.client = CosmosClient(cosmos_endpoint, cosmos_key)
-        self.db = self.client.get_database_client(db_name)
-        self.container = self.db.get_container_client(container_name)
+        self.use_cosmos = bool(cosmos_endpoint and cosmos_key)
+        if self.use_cosmos:
+            self.client = CosmosClient(cosmos_endpoint, cosmos_key)
+            self.db = self.client.get_database_client(db_name)
+            self.container = self.db.get_container_client(container_name)
+        else:
+            self.client = None
+            self.db = None
+            self.container = None
         self.short_memories: Dict[str, ConversationBufferWindowMemory] = {}
+        self.last_updated: Dict[str, int] = {}  # Only used when not using Cosmos
 
     def get_memory(self, session_id: str) -> ConversationBufferWindowMemory:
         if session_id not in self.short_memories:
-            try:
-                query = "SELECT * FROM c WHERE c.id = @id"
-                params = [{"name": "@id", "value": session_id}]
-                items = list(self.container.query_items(
-                    query=query,
-                    parameters=params,
-                    enable_cross_partition_query=True
-                ))
-                history_list = json.loads(items[0]["history"]) if items else []
-            except Exception:
+            if self.use_cosmos:
+                try:
+                    query = "SELECT * FROM c WHERE c.id = @id"
+                    params = [{"name": "@id", "value": session_id}]
+                    items = list(self.container.query_items(
+                        query=query,
+                        parameters=params,
+                        enable_cross_partition_query=True
+                    ))
+                    history_list = json.loads(items[0]["history"]) if items else []
+                except Exception:
+                    history_list = []
+            else:
                 history_list = []
 
             memory = ConversationBufferWindowMemory(k=10)
@@ -55,29 +66,48 @@ class MemoryHandler:
         else:
             title = "New Conversation"
 
-        item = {
-            "id": session_id,
-            "history": json.dumps(history_list),
-            "title": title
-        }
-        self.container.upsert_item(item)
+        if self.use_cosmos:
+            item = {
+                "id": session_id,
+                "history": json.dumps(history_list),
+                "title": title
+            }
+            self.container.upsert_item(item)
+        else:
+            self.last_updated[session_id] = int(time.time())
 
     def list_conversations(self, session_id: str) -> List[dict]:
-        prefix = f"{session_id}:"
-        query = """
-        SELECT c.id, c.title, c._ts 
-        FROM c 
-        WHERE STARTSWITH(c.id, @prefix) OR c.id = @session_id
-        """
-        params = [
-            {"name": "@prefix", "value": prefix},
-            {"name": "@session_id", "value": session_id}
-        ]
-        items = list(self.container.query_items(
-            query=query,
-            parameters=params,
-            enable_cross_partition_query=True
-        ))
+        if self.use_cosmos:
+            prefix = f"{session_id}:"
+            query = """
+            SELECT c.id, c.title, c._ts 
+            FROM c 
+            WHERE STARTSWITH(c.id, @prefix) OR c.id = @session_id
+            """
+            params = [
+                {"name": "@prefix", "value": prefix},
+                {"name": "@session_id", "value": session_id}
+            ]
+            items = list(self.container.query_items(
+                query=query,
+                parameters=params,
+                enable_cross_partition_query=True
+            ))
+        else:
+            prefix = f"{session_id}:"
+            items = []
+            for sid in list(self.short_memories.keys()):
+                if sid == session_id or sid.startswith(prefix):
+                    # Compute title
+                    mem = self.short_memories[sid]
+                    hlist = [{"role": m.type, "content": m.content} for m in mem.chat_memory.messages]
+                    first_h = next((m["content"] for m in hlist if m["role"] == "human"), None)
+                    t = (first_h[:100] + ("..." if len(first_h or "") > 100 else "")) if first_h else "New Conversation"
+                    items.append({
+                        "id": sid,
+                        "title": t,
+                        "_ts": self.last_updated.get(sid, 0)
+                    })
 
         conversations = []
         for itm in items:
